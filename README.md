@@ -2,7 +2,7 @@
 
 A Home Assistant Lovelace card for configuring weekly heating/cooling schedules for `climate` entities — with a visual timeline interface.
 
-![Screenshot](https://raw.githubusercontent.com/YOUR_USERNAME/thermostat-schedule-card/main/docs/screenshot.png)
+![Screenshot](https://raw.githubusercontent.com/Michirieger/thermostat-schedule-card/main/docs/screenshot.png)
 
 ## Features
 
@@ -19,7 +19,7 @@ A Home Assistant Lovelace card for configuring weekly heating/cooling schedules 
 ## Installation via HACS
 
 1. Go to **HACS → Frontend → ⋮ → Custom repositories**
-2. Add `https://github.com/YOUR_USERNAME/thermostat-schedule-card` as type **Lovelace**
+2. Add `https://github.com/Michirieger/thermostat-schedule-card` as type **Lovelace**
 3. Search for **Thermostat Schedule Card** and install
 4. Reload the browser
 
@@ -27,7 +27,7 @@ A Home Assistant Lovelace card for configuring weekly heating/cooling schedules 
 
 ## Manual Installation
 
-1. Download `dist/thermostat-schedule-card.js` from the [latest release](https://github.com/YOUR_USERNAME/thermostat-schedule-card/releases/latest)
+1. Download `dist/thermostat-schedule-card.js` from the [latest release](https://github.com/Michirieger/thermostat-schedule-card/releases/latest)
 2. Copy to `/config/www/thermostat-schedule-card.js`
 3. Add a dashboard resource:
    - **Settings → Dashboards → ⋮ → Resources → Add Resource**

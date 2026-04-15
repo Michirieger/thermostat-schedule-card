@@ -664,5 +664,5 @@ window.customCards.push({
   description:
     'A weekly schedule card for climate entities — configure heating/cooling times and temperatures for each day group.',
   preview: true,
-  documentationURL: 'https://github.com/YOUR_USERNAME/thermostat-schedule-card',
+  documentationURL: 'https://github.com/Michirieger/thermostat-schedule-card',
 });
