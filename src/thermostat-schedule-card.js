@@ -259,20 +259,17 @@ class ThermostatScheduleCard extends LitElement {
   // ── Config ──────────────────────────────────────────────────────────────
 
   setConfig(config) {
-    if (!config.entities?.length) {
-      throw new Error('Please define at least one climate entity.');
-    }
     this.config = config;
 
-    if (config.schedule_entity) {
-      // Schedule will be loaded from the HA entity via set hass()
-      this._schedule = null;
-      this._lastEntityState = undefined;
-    } else {
-      // Legacy: schedule stored in card config
+    if (!config.schedule_entity) {
+      // No input_text entity — schedule stored in card config
       this._schedule = config.schedule
         ? JSON.parse(JSON.stringify(config.schedule))
         : getDefaultSchedule();
+    } else {
+      // Schedule will be loaded from the HA entity via updated()
+      this._schedule = null;
+      this._lastEntityState = undefined;
     }
 
     this._syncStatus = 'idle';
@@ -545,16 +542,32 @@ class ThermostatScheduleCard extends LitElement {
   }
 
   render() {
-    const { schedule: _s, ...cfg } = this.config ?? {};
+    // Guard: config not yet set (can happen in editor preview before setConfig)
+    if (!this.config) {
+      return html`<ha-card><div class="loading-state">Initializing…</div></ha-card>`;
+    }
+
+    // Guard: no entities configured
+    if (!this.config.entities?.length) {
+      return html`
+        <ha-card>
+          <div class="loading-state">
+            Please define at least one <code>climate</code> entity in the card config.
+          </div>
+        </ha-card>
+      `;
+    }
+
     const schedule = this._schedule;
-    const hasEntity = Boolean(this.config?.schedule_entity);
+    const hasEntity = Boolean(this.config.schedule_entity);
 
     // Show loading placeholder while waiting for entity state to arrive
     if (!schedule) {
       return html`
         <ha-card>
           <div class="loading-state">
-            Loading schedule from <code>${this.config.schedule_entity}</code>…
+            Loading schedule from
+            <code>${this.config.schedule_entity ?? 'entity'}</code>…
           </div>
         </ha-card>
       `;
