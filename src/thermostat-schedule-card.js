@@ -281,13 +281,12 @@ class ThermostatScheduleCard extends LitElement {
     this._loadSyncCount();
   }
 
-  set hass(hass) {
-    this.hass = hass;
-
+  updated(changedProps) {
+    if (!changedProps.has('hass')) return;
     const entityId = this.config?.schedule_entity;
-    if (!entityId) return;
+    if (!entityId || !this.hass) return;
 
-    const entityState = hass.states[entityId]?.state;
+    const entityState = this.hass.states[entityId]?.state;
     if (entityState === undefined || entityState === this._lastEntityState) return;
 
     this._lastEntityState = entityState;
