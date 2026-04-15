@@ -4,15 +4,20 @@ import { minutesToTimeStr, timeStrToMinutes, getBlockColor } from './utils.js';
 /**
  * Dialog for adding or editing a single time block.
  *
+ * ha-dialog slot API:
+ *   - default slot          → content
+ *   - slot="primaryAction"  → right button (Save)
+ *   - slot="secondaryAction"→ left button  (Delete / Cancel)
+ *
  * Events fired:
- *  - 'block-save'   → { block: { id, startMinutes, endMinutes, temperature } }
- *  - 'block-delete' → { id: blockId }
- *  - 'block-cancel' → (no detail)
+ *  'block-save'   → { block: { id, startMinutes, endMinutes, temperature } }
+ *  'block-delete' → { id: blockId }
+ *  'block-cancel' → (no detail)
  */
 export class BlockDialog extends LitElement {
   static properties = {
     open: { type: Boolean },
-    block: { type: Object }, // existing block or null for new
+    block: { type: Object },
     isNew: { type: Boolean },
     minTemp: { type: Number },
     maxTemp: { type: Number },
@@ -23,34 +28,25 @@ export class BlockDialog extends LitElement {
   };
 
   static styles = css`
-    :host {
-      --dialog-width: 340px;
-    }
-
     ha-dialog {
-      --mdc-dialog-min-width: var(--dialog-width);
-      --mdc-dialog-max-width: var(--dialog-width);
+      --mdc-dialog-min-width: min(360px, 96vw);
+      --mdc-dialog-max-width: 400px;
     }
 
     .content {
       display: flex;
       flex-direction: column;
       gap: 20px;
-      padding: 8px 0 4px;
-    }
-
-    .field-group {
-      display: flex;
-      flex-direction: column;
-      gap: 6px;
+      padding: 0 0 8px;
     }
 
     .field-label {
-      font-size: 0.75rem;
-      font-weight: 500;
+      font-size: 0.72rem;
+      font-weight: 600;
       color: var(--secondary-text-color);
       text-transform: uppercase;
-      letter-spacing: 0.06em;
+      letter-spacing: 0.07em;
+      margin-bottom: 6px;
     }
 
     .time-row {
@@ -66,7 +62,7 @@ export class BlockDialog extends LitElement {
     }
 
     .time-sublabel {
-      font-size: 0.7rem;
+      font-size: 0.68rem;
       color: var(--secondary-text-color);
     }
 
@@ -81,7 +77,6 @@ export class BlockDialog extends LitElement {
       color: var(--primary-text-color);
       box-sizing: border-box;
       outline: none;
-      cursor: pointer;
     }
 
     input[type='time']:focus {
@@ -107,7 +102,6 @@ export class BlockDialog extends LitElement {
       align-items: center;
       justify-content: center;
       flex-shrink: 0;
-      line-height: 1;
       user-select: none;
       transition: background 0.15s, color 0.15s;
     }
@@ -118,111 +112,86 @@ export class BlockDialog extends LitElement {
       border-color: var(--primary-color);
     }
 
-    .temp-display {
+    .temp-center {
       flex: 1;
       display: flex;
-      align-items: center;
-      justify-content: center;
       flex-direction: column;
-      gap: 4px;
+      align-items: center;
     }
 
     .temp-value {
-      font-size: 1.8rem;
+      font-size: 2rem;
       font-weight: 500;
       color: var(--primary-text-color);
+      line-height: 1.1;
     }
 
     .temp-unit {
-      font-size: 0.75rem;
+      font-size: 0.72rem;
       color: var(--secondary-text-color);
     }
 
     input[type='range'] {
-      flex: 1;
+      width: 100%;
+      margin-top: 6px;
       accent-color: var(--primary-color);
     }
 
     .preview-block {
-      border-radius: 6px;
-      height: 40px;
+      border-radius: 8px;
+      padding: 10px 16px;
       display: flex;
       align-items: center;
       justify-content: center;
       font-size: 0.85rem;
       font-weight: 600;
+      gap: 8px;
       transition: background 0.2s;
     }
 
     .delete-btn {
       --mdc-theme-primary: var(--error-color, #b71c1c);
     }
-
-    .dialog-footer {
-      display: flex;
-      justify-content: flex-end;
-      gap: 8px;
-    }
   `;
 
   willUpdate(changedProps) {
     if (changedProps.has('block') && this.block) {
       this._startTime = minutesToTimeStr(this.block.startMinutes);
-      const endMins = this.block.endMinutes;
-      this._endTime = endMins === 1440 ? '00:00' : minutesToTimeStr(endMins);
+      const end = this.block.endMinutes;
+      this._endTime = end === 1440 ? '00:00' : minutesToTimeStr(end);
       this._temperature = this.block.temperature;
     }
-    if (changedProps.has('isNew') && this.isNew && !this.block) {
+    if (changedProps.has('open') && this.open && this.isNew && this._temperature == null) {
       this._startTime = '07:00';
       this._endTime = '22:00';
       this._temperature = 21;
     }
   }
 
-  _cancel() {
-    this.dispatchEvent(new CustomEvent('block-cancel', { bubbles: true, composed: true }));
+  _dispatch(name, detail = {}) {
+    this.dispatchEvent(new CustomEvent(name, { bubbles: true, composed: true, detail }));
   }
+
+  _cancel() { this._dispatch('block-cancel'); }
 
   _save() {
     const startMinutes = timeStrToMinutes(this._startTime, false);
     const endMinutes = timeStrToMinutes(this._endTime, true);
-    this.dispatchEvent(
-      new CustomEvent('block-save', {
-        bubbles: true,
-        composed: true,
-        detail: {
-          block: {
-            ...(this.block || {}),
-            startMinutes,
-            endMinutes,
-            temperature: this._temperature,
-          },
-        },
-      }),
-    );
+    this._dispatch('block-save', {
+      block: { ...(this.block || {}), startMinutes, endMinutes, temperature: this._temperature },
+    });
   }
 
   _delete() {
-    this.dispatchEvent(
-      new CustomEvent('block-delete', {
-        bubbles: true,
-        composed: true,
-        detail: { id: this.block?.id },
-      }),
-    );
+    this._dispatch('block-delete', { id: this.block?.id });
   }
 
   _adjustTemp(delta) {
     const min = this.minTemp ?? 5;
     const max = this.maxTemp ?? 35;
     const step = this.tempStep ?? 0.5;
-    this._temperature = Math.round(
-      Math.max(min, Math.min(max, (this._temperature ?? 20) + delta)) / step,
-    ) * step;
-  }
-
-  _onTempSlider(e) {
-    this._temperature = parseFloat(e.target.value);
+    const raw = (this._temperature ?? 20) + delta;
+    this._temperature = Math.round(Math.max(min, Math.min(max, raw)) / step) * step;
   }
 
   render() {
@@ -233,17 +202,19 @@ export class BlockDialog extends LitElement {
     const step = this.tempStep ?? 0.5;
     const temp = this._temperature ?? 20;
     const colors = getBlockColor(temp, min, max);
+    const tempStr = temp % 1 === 0 ? String(temp) : temp.toFixed(1);
+    const endDisplay = this._endTime === '00:00' ? '24:00' : (this._endTime ?? '');
 
     return html`
       <ha-dialog
         .open=${this.open}
         .heading=${this.isNew ? 'Add Time Block' : 'Edit Time Block'}
         @closed=${this._cancel}
-        hideActions
       >
-        <div class="content" slot="content">
+        <!-- content goes in the DEFAULT slot (no slot attribute) -->
+        <div class="content">
 
-          <div class="field-group">
+          <div>
             <div class="field-label">Time Range</div>
             <div class="time-row">
               <div class="time-input-wrap">
@@ -255,7 +226,7 @@ export class BlockDialog extends LitElement {
                 />
               </div>
               <div class="time-input-wrap">
-                <span class="time-sublabel">End (00:00 = midnight)</span>
+                <span class="time-sublabel">End &nbsp;(00:00 = midnight)</span>
                 <input
                   type="time"
                   .value=${this._endTime ?? ''}
@@ -265,23 +236,23 @@ export class BlockDialog extends LitElement {
             </div>
           </div>
 
-          <div class="field-group">
+          <div>
             <div class="field-label">Temperature</div>
             <div class="temp-control">
               <button class="temp-btn" @click=${() => this._adjustTemp(-step)}>−</button>
-              <div class="temp-display">
-                <span class="temp-value">${temp % 1 === 0 ? temp : temp.toFixed(1)}</span>
+              <div class="temp-center">
+                <span class="temp-value">${tempStr}</span>
                 <span class="temp-unit">°C</span>
               </div>
               <button class="temp-btn" @click=${() => this._adjustTemp(step)}>+</button>
             </div>
             <input
               type="range"
-              min=${min}
-              max=${max}
-              step=${step}
+              .min=${String(min)}
+              .max=${String(max)}
+              .step=${String(step)}
               .value=${String(temp)}
-              @input=${this._onTempSlider}
+              @input=${(e) => (this._temperature = parseFloat(e.target.value))}
             />
           </div>
 
@@ -289,27 +260,21 @@ export class BlockDialog extends LitElement {
             class="preview-block"
             style="background:${colors.bg}; color:${colors.text}"
           >
-            ${temp % 1 === 0 ? temp : temp.toFixed(1)}°C
-            &nbsp;·&nbsp;
-            ${this._startTime ?? ''} – ${this._endTime === '00:00' ? '24:00' : (this._endTime ?? '')}
+            <span>${tempStr}°C</span>
+            <span>·</span>
+            <span>${this._startTime ?? ''} – ${endDisplay}</span>
           </div>
 
         </div>
 
-        <div class="dialog-footer" slot="actions">
-          ${!this.isNew
-            ? html`
-                <mwc-button
-                  class="delete-btn"
-                  label="Delete"
-                  @click=${this._delete}
-                ></mwc-button>
-                <span style="flex:1"></span>
-              `
-            : html``}
-          <mwc-button label="Cancel" @click=${this._cancel}></mwc-button>
-          <mwc-button raised label="Save" @click=${this._save}></mwc-button>
-        </div>
+        <!-- named action slots -->
+        ${!this.isNew
+          ? html`<mwc-button class="delete-btn" slot="secondaryAction" @click=${this._delete}>
+                   Delete
+                 </mwc-button>`
+          : html`<mwc-button slot="secondaryAction" @click=${this._cancel}>Cancel</mwc-button>`}
+
+        <mwc-button slot="primaryAction" raised @click=${this._save}>Save</mwc-button>
       </ha-dialog>
     `;
   }

@@ -21,11 +21,12 @@ class ThermostatScheduleCard extends LitElement {
     hass: { type: Object },
     config: { type: Object },
     _schedule: { state: true },
-    _editBlock: { state: true },       // { block, groupId, isNew }
-    _editGroup: { state: true },       // group
-    _syncStatus: { state: true },      // 'idle' | 'syncing' | 'ok' | 'error'
+    _editBlock: { state: true },   // { block, groupId, isNew }
+    _editGroup: { state: true },   // group
+    _syncStatus: { state: true },  // 'idle' | 'syncing' | 'ok' | 'error'
     _syncMessage: { state: true },
     _syncCount: { state: true },
+    _dragging: { state: true },    // true while pointer drag is active
   };
 
   static styles = css`
@@ -178,12 +179,55 @@ class ThermostatScheduleCard extends LitElement {
       color: white;
       text-shadow: 0 1px 2px rgba(0,0,0,0.25);
       pointer-events: none;
+      user-select: none;
     }
 
-    .block-add-hint {
-      font-size: 0.6rem;
-      color: rgba(255,255,255,0.7);
+    /* ── Drag handle ── */
+    .drag-handle {
+      position: absolute;
+      top: 0;
+      width: 16px;
+      height: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: col-resize;
+      z-index: 2;
+      touch-action: none;
+    }
+
+    .drag-handle.drag-handle-right { right: -8px; }
+    .drag-handle.drag-handle-left  { left: -8px; }
+
+    .drag-handle::after {
+      content: '';
+      width: 3px;
+      height: 60%;
+      border-radius: 2px;
+      background: rgba(255,255,255,0.7);
+      transition: background 0.15s, width 0.15s;
+    }
+
+    .drag-handle:hover::after,
+    .drag-handle.active::after {
+      background: white;
+      width: 4px;
+    }
+
+    /* Drag tooltip */
+    .drag-tooltip {
+      position: absolute;
+      bottom: calc(100% + 6px);
+      left: 50%;
+      transform: translateX(-50%);
+      background: rgba(0,0,0,0.75);
+      color: white;
+      font-size: 0.65rem;
+      padding: 2px 6px;
+      border-radius: 4px;
+      white-space: nowrap;
       pointer-events: none;
+      z-index: 10;
     }
 
     /* ── Time labels ── */
@@ -255,6 +299,8 @@ class ThermostatScheduleCard extends LitElement {
   // ── Private fields ───────────────────────────────────────────────────────
 
   _lastEntityState = undefined;
+  _dragState = null;        // active drag info
+  _dragSchedule = null;     // schedule being mutated during drag (not yet committed)
 
   // ── Config ──────────────────────────────────────────────────────────────
 
@@ -432,6 +478,82 @@ class ThermostatScheduleCard extends LitElement {
     this._commitSchedule({ ...this._schedule, groups });
   }
 
+  // ── Drag-to-resize ──────────────────────────────────────────────────────
+
+  /**
+   * Called on pointerdown on a drag handle between two blocks.
+   * edge = 'right' means we're dragging the right edge of `blockId`
+   *                and the left edge of the next block.
+   */
+  _startDrag(e, groupId, blockId, edge) {
+    e.preventDefault();
+    e.stopPropagation();
+
+    // Find the timeline element for this group to get its bounding rect
+    const groupEl = this.shadowRoot.querySelector(`[data-group="${groupId}"]`);
+    if (!groupEl) return;
+    const timelineEl = groupEl.querySelector('.timeline');
+    const rect = timelineEl.getBoundingClientRect();
+
+    this._dragState = { groupId, blockId, edge, rect, snap: 15 };
+    this._dragSchedule = JSON.parse(JSON.stringify(this._schedule));
+    this._dragging = true;
+
+    // Window-level listeners so events aren't lost on fast moves
+    this._onDragMoveBound = this._onDragMove.bind(this);
+    this._onDragEndBound = this._onDragEnd.bind(this);
+    window.addEventListener('pointermove', this._onDragMoveBound);
+    window.addEventListener('pointerup', this._onDragEndBound);
+    window.addEventListener('pointercancel', this._onDragEndBound);
+  }
+
+  _onDragMove(e) {
+    if (!this._dragState || !this._dragSchedule) return;
+    const { groupId, blockId, edge, rect, snap } = this._dragState;
+
+    const x = e.clientX - rect.left;
+    const rawMinutes = (x / rect.width) * 1440;
+    const snapped = Math.round(rawMinutes / snap) * snap;
+    const minutes = Math.max(0, Math.min(1440, snapped));
+
+    const group = this._dragSchedule.groups.find((g) => g.id === groupId);
+    if (!group) return;
+    const blocks = sortBlocks(group.blocks);
+    const idx = blocks.findIndex((b) => b.id === blockId);
+    if (idx < 0) return;
+
+    if (edge === 'right' && idx < blocks.length - 1) {
+      const curr = blocks[idx];
+      const next = blocks[idx + 1];
+      const newEnd = Math.max(curr.startMinutes + snap, Math.min(next.endMinutes - snap, minutes));
+      curr.endMinutes = newEnd;
+      next.startMinutes = newEnd;
+    } else if (edge === 'left' && idx > 0) {
+      const prev = blocks[idx - 1];
+      const curr = blocks[idx];
+      const newStart = Math.max(prev.startMinutes + snap, Math.min(curr.endMinutes - snap, minutes));
+      prev.endMinutes = newStart;
+      curr.startMinutes = newStart;
+    }
+
+    // Trigger re-render with the live drag schedule (don't commit yet)
+    this._schedule = JSON.parse(JSON.stringify(this._dragSchedule));
+  }
+
+  _onDragEnd(_e) {
+    if (!this._dragState) return;
+    // Commit the final schedule
+    if (this._dragSchedule) {
+      this._commitSchedule(JSON.parse(JSON.stringify(this._dragSchedule)));
+    }
+    this._dragState = null;
+    this._dragSchedule = null;
+    this._dragging = false;
+    window.removeEventListener('pointermove', this._onDragMoveBound);
+    window.removeEventListener('pointerup', this._onDragEndBound);
+    window.removeEventListener('pointercancel', this._onDragEndBound);
+  }
+
   // ── Automation sync ──────────────────────────────────────────────────────
 
   async _syncToHA() {
@@ -461,9 +583,10 @@ class ThermostatScheduleCard extends LitElement {
     const boundaries = getTimeBoundaries(blocks);
     const minTemp = this.config.min_temp ?? 5;
     const maxTemp = this.config.max_temp ?? 35;
+    const isDragging = this._dragging && this._dragState?.groupId === group.id;
 
     return html`
-      <div class="group-section">
+      <div class="group-section" data-group="${group.id}">
         <div class="group-header">
           <span class="group-name">${getGroupName(group.days)}</span>
           <div class="group-btns">
@@ -475,20 +598,37 @@ class ThermostatScheduleCard extends LitElement {
           </div>
         </div>
 
-        <div class="timeline">
-          ${blocks.map((block) => {
+        <div class="timeline" style="${isDragging ? 'cursor:col-resize;' : ''}">
+          ${blocks.map((block, idx) => {
             const width = ((block.endMinutes - block.startMinutes) / 1440) * 100;
             const colors = getBlockColor(block.temperature, minTemp, maxTemp);
+            const isFirst = idx === 0;
+            const isLast = idx === blocks.length - 1;
+            const isActiveDrag = this._dragState?.blockId === block.id;
+
             return html`
               <div
                 class="timeline-block"
-                style="width:${width}%; background:${colors.bg};"
-                title="${minutesToTimeStr(block.startMinutes)} – ${
-                  block.endMinutes === 1440 ? '24:00' : minutesToTimeStr(block.endMinutes)
-                }  |  ${block.temperature}°C  (click to edit)"
-                @click=${() => this._openEditBlock(block, group.id)}
+                style="width:${width}%; background:${colors.bg}; position:relative;"
+                @click=${() => !this._dragging && this._openEditBlock(block, group.id)}
               >
+                <!-- Left drag handle (not on first block) -->
+                ${!isFirst ? html`
+                  <div
+                    class="drag-handle drag-handle-left ${isActiveDrag ? 'active' : ''}"
+                    @pointerdown=${(e) => this._startDrag(e, group.id, block.id, 'left')}
+                  ></div>
+                ` : html``}
+
                 <span class="block-temp">${block.temperature}°</span>
+
+                <!-- Right drag handle (not on last block) -->
+                ${!isLast ? html`
+                  <div
+                    class="drag-handle drag-handle-right ${isActiveDrag ? 'active' : ''}"
+                    @pointerdown=${(e) => this._startDrag(e, group.id, block.id, 'right')}
+                  ></div>
+                ` : html``}
               </div>
             `;
           })}
