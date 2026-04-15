@@ -1,6 +1,5 @@
 {
   "name": "Thermostat Schedule Card",
   "render_readme": true,
-  "filename": "dist/thermostat-schedule-card.js",
-  "content_in_root": false
+  "filename": "thermostat-schedule-card.js"
 }

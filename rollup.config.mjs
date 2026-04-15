@@ -6,7 +6,7 @@ const dev = process.env.ROLLUP_WATCH;
 export default {
   input: 'src/thermostat-schedule-card.js',
   output: {
-    file: 'dist/thermostat-schedule-card.js',
+    file: 'thermostat-schedule-card.js',
     format: 'es',
     sourcemap: dev ? true : false,
   },
