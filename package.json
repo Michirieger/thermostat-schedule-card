@@ -1,0 +1,19 @@
+{
+  "name": "thermostat-schedule-card",
+  "version": "1.0.0",
+  "description": "Home Assistant Lovelace card for scheduling thermostat temperatures",
+  "keywords": ["home-assistant", "lovelace", "thermostat", "schedule", "hacs"],
+  "license": "MIT",
+  "type": "module",
+  "scripts": {
+    "build": "rollup -c rollup.config.mjs",
+    "watch": "rollup -c rollup.config.mjs --watch",
+    "lint": "eslint src/"
+  },
+  "devDependencies": {
+    "@rollup/plugin-node-resolve": "^15.2.3",
+    "@rollup/plugin-terser": "^0.4.4",
+    "lit": "^3.1.0",
+    "rollup": "^4.9.0"
+  }
+}
