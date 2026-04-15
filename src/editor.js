@@ -54,6 +54,20 @@ export class ThermostatScheduleCardEditor extends LitElement {
     ha-textfield {
       width: 100%;
     }
+
+    .helper-note {
+      font-size: 0.75rem;
+      color: var(--secondary-text-color);
+      margin-top: 6px;
+      line-height: 1.4;
+    }
+
+    .helper-note code {
+      font-size: 0.72rem;
+      background: var(--secondary-background-color, rgba(0,0,0,0.06));
+      padding: 1px 4px;
+      border-radius: 3px;
+    }
   `;
 
   setConfig(config) {
@@ -87,6 +101,23 @@ export class ThermostatScheduleCardEditor extends LitElement {
     this._fireChanged({ entities });
   }
 
+  _updateScheduleEntity(value) {
+    if (value) {
+      this._fireChanged({ schedule_entity: value });
+    } else {
+      // Remove the key entirely when cleared
+      const { schedule_entity, ...rest } = this.config;
+      this.config = rest;
+      this.dispatchEvent(
+        new CustomEvent('config-changed', {
+          detail: { config: this.config },
+          bubbles: true,
+          composed: true,
+        }),
+      );
+    }
+  }
+
   render() {
     if (!this.hass || !this.config) return html``;
 
@@ -94,6 +125,7 @@ export class ThermostatScheduleCardEditor extends LitElement {
     const minTemp = this.config.min_temp ?? 5;
     const maxTemp = this.config.max_temp ?? 35;
     const tempStep = this.config.temp_step ?? 0.5;
+    const scheduleEntity = this.config.schedule_entity ?? '';
 
     return html`
       <div class="form">
@@ -161,6 +193,24 @@ export class ThermostatScheduleCardEditor extends LitElement {
               @change=${(e) =>
                 this._fireChanged({ temp_step: parseFloat(e.target.value) })}
             ></ha-textfield>
+          </div>
+        </div>
+
+        <div>
+          <div class="section-title">Schedule Storage Entity (input_text)</div>
+          <ha-entity-picker
+            .hass=${this.hass}
+            .value=${scheduleEntity}
+            .includeDomains=${['input_text']}
+            @value-changed=${(e) => this._updateScheduleEntity(e.detail.value)}
+            allow-custom-entity
+          ></ha-entity-picker>
+          <div class="helper-note">
+            Create a Text helper in
+            <strong>Settings → Devices &amp; Services → Helpers</strong>,
+            set max length to <code>10000</code>.
+            When set, schedule changes are saved immediately without requiring
+            dashboard edit mode.
           </div>
         </div>
 

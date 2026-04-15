@@ -72,12 +72,41 @@ class ThermostatScheduleCard extends LitElement {
       align-items: center;
     }
 
+    /* ── Info banner ── */
+    .info-banner {
+      display: flex;
+      align-items: flex-start;
+      gap: 8px;
+      margin: 0 16px 8px;
+      padding: 8px 10px;
+      border-radius: var(--radius);
+      background: var(--info-color, #2196f3);
+      color: #fff;
+      font-size: 0.72rem;
+      line-height: 1.4;
+      opacity: 0.88;
+    }
+
+    .info-banner ha-icon {
+      --mdc-icon-size: 16px;
+      flex-shrink: 0;
+      margin-top: 1px;
+    }
+
     /* ── Schedule ── */
     .schedule-body {
       padding: 4px 16px 12px;
       display: flex;
       flex-direction: column;
       gap: 0;
+    }
+
+    /* ── Loading state ── */
+    .loading-state {
+      padding: 24px 16px;
+      text-align: center;
+      font-size: 0.82rem;
+      color: var(--secondary-text-color);
     }
 
     /* ── Group section ── */
@@ -223,6 +252,10 @@ class ThermostatScheduleCard extends LitElement {
     }
   `;
 
+  // ── Private fields ───────────────────────────────────────────────────────
+
+  _lastEntityState = undefined;
+
   // ── Config ──────────────────────────────────────────────────────────────
 
   setConfig(config) {
@@ -230,11 +263,43 @@ class ThermostatScheduleCard extends LitElement {
       throw new Error('Please define at least one climate entity.');
     }
     this.config = config;
-    this._schedule = config.schedule ? JSON.parse(JSON.stringify(config.schedule)) : getDefaultSchedule();
+
+    if (config.schedule_entity) {
+      // Schedule will be loaded from the HA entity via set hass()
+      this._schedule = null;
+      this._lastEntityState = undefined;
+    } else {
+      // Legacy: schedule stored in card config
+      this._schedule = config.schedule
+        ? JSON.parse(JSON.stringify(config.schedule))
+        : getDefaultSchedule();
+    }
+
     this._syncStatus = 'idle';
     this._syncMessage = '';
     this._syncCount = null;
     this._loadSyncCount();
+  }
+
+  set hass(hass) {
+    this.hass = hass;
+
+    const entityId = this.config?.schedule_entity;
+    if (!entityId) return;
+
+    const entityState = hass.states[entityId]?.state;
+    if (entityState === undefined || entityState === this._lastEntityState) return;
+
+    this._lastEntityState = entityState;
+
+    try {
+      const parsed = JSON.parse(entityState);
+      if (parsed && typeof parsed === 'object' && Array.isArray(parsed.groups)) {
+        this._schedule = parsed;
+      }
+    } catch {
+      // State is not valid JSON yet (e.g. entity just created and empty)
+    }
   }
 
   getCardSize() {
@@ -271,17 +336,29 @@ class ThermostatScheduleCard extends LitElement {
 
   // ── Schedule mutations ───────────────────────────────────────────────────
 
-  /** Persist schedule back into config + fire event so HA saves it */
+  /** Persist schedule — via input_text entity if configured, else via config-changed */
   _commitSchedule(schedule) {
     this._schedule = schedule;
-    this.config = { ...this.config, schedule };
-    this.dispatchEvent(
-      new CustomEvent('config-changed', {
-        detail: { config: this.config },
-        bubbles: true,
-        composed: true,
-      }),
-    );
+
+    if (this.config.schedule_entity) {
+      // Persist to HA input_text helper; no config-changed needed
+      this.hass.callService('input_text', 'set_value', {
+        entity_id: this.config.schedule_entity,
+        value: JSON.stringify(schedule),
+      });
+      // Optimistically update the last known state so we don't re-parse our own write
+      this._lastEntityState = JSON.stringify(schedule);
+    } else {
+      // Legacy: fire config-changed so HA saves schedule into card config
+      this.config = { ...this.config, schedule };
+      this.dispatchEvent(
+        new CustomEvent('config-changed', {
+          detail: { config: this.config },
+          bubbles: true,
+          composed: true,
+        }),
+      );
+    }
   }
 
   _saveBlock(e) {
@@ -471,7 +548,18 @@ class ThermostatScheduleCard extends LitElement {
   render() {
     const { schedule: _s, ...cfg } = this.config ?? {};
     const schedule = this._schedule;
-    if (!schedule) return html``;
+    const hasEntity = Boolean(this.config?.schedule_entity);
+
+    // Show loading placeholder while waiting for entity state to arrive
+    if (!schedule) {
+      return html`
+        <ha-card>
+          <div class="loading-state">
+            Loading schedule from <code>${this.config.schedule_entity}</code>…
+          </div>
+        </ha-card>
+      `;
+    }
 
     const usedDays = schedule.groups.flatMap((g) => g.days);
     const freeCount = 7 - usedDays.length;
@@ -491,6 +579,14 @@ class ThermostatScheduleCard extends LitElement {
             <span class="card-subtitle">${entityList}</span>
           </div>
         </div>
+
+        <!-- ── Info banner (only when no schedule_entity is set) ── -->
+        ${!hasEntity ? html`
+          <div class="info-banner">
+            <ha-icon icon="mdi:information-outline"></ha-icon>
+            <span>Tip: Add <code>schedule_entity: input_text.my_schedule</code> to persist changes without dashboard edit mode.</span>
+          </div>
+        ` : html``}
 
         <!-- ── Schedule rows ── -->
         <div class="schedule-body">
