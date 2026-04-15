@@ -73,26 +73,22 @@ class ThermostatScheduleCard extends LitElement {
       align-items: center;
     }
 
-    /* ── Info banner ── */
-    .info-banner {
-      display: flex;
-      align-items: flex-start;
-      gap: 8px;
-      margin: 0 16px 8px;
-      padding: 8px 10px;
-      border-radius: var(--radius);
-      background: var(--info-color, #2196f3);
-      color: #fff;
-      font-size: 0.72rem;
-      line-height: 1.4;
-      opacity: 0.88;
+    /* ── Sync button ── */
+    .sync-btn {
+      background: var(--primary-color);
+      color: var(--text-primary-color, #fff);
+      border: none;
+      border-radius: 4px;
+      padding: 6px 14px;
+      font-size: 0.82rem;
+      font-weight: 500;
+      font-family: inherit;
+      cursor: pointer;
+      transition: opacity 0.15s;
+      white-space: nowrap;
     }
-
-    .info-banner ha-icon {
-      --mdc-icon-size: 16px;
-      flex-shrink: 0;
-      margin-top: 1px;
-    }
+    .sync-btn:hover { opacity: 0.85; }
+    .sync-btn:disabled { opacity: 0.4; cursor: default; }
 
     /* ── Schedule ── */
     .schedule-body {
@@ -299,8 +295,9 @@ class ThermostatScheduleCard extends LitElement {
   // ── Private fields ───────────────────────────────────────────────────────
 
   _lastEntityState = undefined;
-  _dragState = null;        // active drag info
-  _dragSchedule = null;     // schedule being mutated during drag (not yet committed)
+  _dragState = null;
+  _dragSchedule = null;
+  _preventNextClick = false; // set after drag to swallow the trailing click event
 
   // ── Config ──────────────────────────────────────────────────────────────
 
@@ -549,6 +546,9 @@ class ThermostatScheduleCard extends LitElement {
     this._dragState = null;
     this._dragSchedule = null;
     this._dragging = false;
+    this._preventNextClick = true;
+    // Auto-clear flag in case no click fires (e.g. touch devices)
+    setTimeout(() => { this._preventNextClick = false; }, 300);
     window.removeEventListener('pointermove', this._onDragMoveBound);
     window.removeEventListener('pointerup', this._onDragEndBound);
     window.removeEventListener('pointercancel', this._onDragEndBound);
@@ -610,13 +610,17 @@ class ThermostatScheduleCard extends LitElement {
               <div
                 class="timeline-block"
                 style="width:${width}%; background:${colors.bg}; position:relative;"
-                @click=${() => !this._dragging && this._openEditBlock(block, group.id)}
+                @click=${() => {
+                  if (this._preventNextClick) { this._preventNextClick = false; return; }
+                  this._openEditBlock(block, group.id);
+                }}
               >
                 <!-- Left drag handle (not on first block) -->
                 ${!isFirst ? html`
                   <div
                     class="drag-handle drag-handle-left ${isActiveDrag ? 'active' : ''}"
                     @pointerdown=${(e) => this._startDrag(e, group.id, block.id, 'left')}
+                    @click=${(e) => e.stopPropagation()}
                   ></div>
                 ` : html``}
 
@@ -627,6 +631,7 @@ class ThermostatScheduleCard extends LitElement {
                   <div
                     class="drag-handle drag-handle-right ${isActiveDrag ? 'active' : ''}"
                     @pointerdown=${(e) => this._startDrag(e, group.id, block.id, 'right')}
+                    @click=${(e) => e.stopPropagation()}
                   ></div>
                 ` : html``}
               </div>
@@ -719,7 +724,10 @@ class ThermostatScheduleCard extends LitElement {
     const editB = this._editBlock;
     const editG = this._editGroup;
 
-    const entityList = (this.config.entities || []).join(', ');
+    // Show friendly names from hass state, fall back to entity ID
+    const entityList = (this.config.entities || [])
+      .map((id) => this.hass?.states[id]?.attributes?.friendly_name || id)
+      .join(', ');
     const title = this.config.title ?? 'Thermostat Schedule';
 
     return html`
@@ -731,14 +739,6 @@ class ThermostatScheduleCard extends LitElement {
             <span class="card-subtitle">${entityList}</span>
           </div>
         </div>
-
-        <!-- ── Info banner (only when no schedule_entity is set) ── -->
-        ${!hasEntity ? html`
-          <div class="info-banner">
-            <ha-icon icon="mdi:information-outline"></ha-icon>
-            <span>Tip: Add <code>schedule_entity: input_text.my_schedule</code> to persist changes without dashboard edit mode.</span>
-          </div>
-        ` : html``}
 
         <!-- ── Schedule rows ── -->
         <div class="schedule-body">
@@ -760,15 +760,12 @@ class ThermostatScheduleCard extends LitElement {
         <!-- ── Bottom bar ── -->
         <div class="bottom-bar">
           ${this._renderSyncStatus()}
-          <div class="bottom-right">
-            <mwc-button
-              outlined
-              label="Sync to HA"
-              title="Create/update Home Assistant automations for this schedule"
-              ?disabled=${this._syncStatus === 'syncing'}
-              @click=${this._syncToHA}
-            ></mwc-button>
-          </div>
+          <button
+            class="sync-btn"
+            title="Erstellt/aktualisiert HA-Automationen für diesen Zeitplan"
+            ?disabled=${this._syncStatus === 'syncing'}
+            @click=${this._syncToHA}
+          >${this._syncStatus === 'syncing' ? 'Syncing…' : 'Sync to HA'}</button>
         </div>
       </ha-card>
 

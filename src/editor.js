@@ -1,10 +1,9 @@
 import { LitElement, html, css } from 'lit';
 
 /**
- * Visual config editor for the thermostat-schedule-card.
- * Registered as the card's `getConfigElement()` return type.
- *
- * Fires 'config-changed' with updated config whenever any field changes.
+ * Visual config editor.
+ * Uses ha-selector (HA's standard entity selector) instead of ha-entity-picker
+ * so it works reliably inside shadow DOM.
  */
 export class ThermostatScheduleCardEditor extends LitElement {
   static properties = {
@@ -16,32 +15,27 @@ export class ThermostatScheduleCardEditor extends LitElement {
     .form {
       display: flex;
       flex-direction: column;
-      gap: 16px;
+      gap: 20px;
       padding: 8px 0;
     }
 
     .section-title {
-      font-size: 0.8rem;
+      font-size: 0.75rem;
       font-weight: 600;
       color: var(--secondary-text-color);
       text-transform: uppercase;
       letter-spacing: 0.08em;
-      margin-bottom: 4px;
-    }
-
-    .entity-list {
-      display: flex;
-      flex-direction: column;
-      gap: 8px;
+      margin-bottom: 8px;
     }
 
     .entity-row {
       display: flex;
       align-items: center;
       gap: 8px;
+      margin-bottom: 8px;
     }
 
-    .entity-row ha-entity-picker {
+    .entity-row ha-selector {
       flex: 1;
     }
 
@@ -55,18 +49,20 @@ export class ThermostatScheduleCardEditor extends LitElement {
       width: 100%;
     }
 
+    ha-selector {
+      display: block;
+      width: 100%;
+    }
+
     .helper-note {
       font-size: 0.75rem;
       color: var(--secondary-text-color);
-      margin-top: 6px;
-      line-height: 1.4;
+      margin-top: 8px;
+      line-height: 1.5;
     }
 
-    .helper-note code {
-      font-size: 0.72rem;
-      background: var(--secondary-background-color, rgba(0,0,0,0.06));
-      padding: 1px 4px;
-      border-radius: 3px;
+    .add-btn {
+      margin-top: 4px;
     }
   `;
 
@@ -74,47 +70,40 @@ export class ThermostatScheduleCardEditor extends LitElement {
     this.config = config;
   }
 
-  _fireChanged(partial) {
+  _fire(partial) {
     this.config = { ...this.config, ...partial };
-    this.dispatchEvent(
-      new CustomEvent('config-changed', {
-        detail: { config: this.config },
-        bubbles: true,
-        composed: true,
-      }),
-    );
-  }
-
-  _addEntity() {
-    const entities = [...(this.config.entities || []), ''];
-    this._fireChanged({ entities });
+    this.dispatchEvent(new CustomEvent('config-changed', {
+      detail: { config: this.config },
+      bubbles: true,
+      composed: true,
+    }));
   }
 
   _updateEntity(index, value) {
     const entities = [...(this.config.entities || [])];
-    entities[index] = value;
-    this._fireChanged({ entities });
+    if (value) {
+      entities[index] = value;
+    } else {
+      entities.splice(index, 1);
+    }
+    this._fire({ entities });
   }
 
-  _removeEntity(index) {
-    const entities = (this.config.entities || []).filter((_, i) => i !== index);
-    this._fireChanged({ entities });
+  _addEntity() {
+    this._fire({ entities: [...(this.config.entities || []), ''] });
   }
 
   _updateScheduleEntity(value) {
     if (value) {
-      this._fireChanged({ schedule_entity: value });
+      this._fire({ schedule_entity: value });
     } else {
-      // Remove the key entirely when cleared
       const { schedule_entity, ...rest } = this.config;
       this.config = rest;
-      this.dispatchEvent(
-        new CustomEvent('config-changed', {
-          detail: { config: this.config },
-          bubbles: true,
-          composed: true,
-        }),
-      );
+      this.dispatchEvent(new CustomEvent('config-changed', {
+        detail: { config: this.config },
+        bubbles: true,
+        composed: true,
+      }));
     }
   }
 
@@ -130,44 +119,41 @@ export class ThermostatScheduleCardEditor extends LitElement {
     return html`
       <div class="form">
 
+        <!-- Climate Entities -->
         <div>
           <div class="section-title">Climate Entities</div>
-          <div class="entity-list">
-            ${entities.map(
-              (entity, i) => html`
-                <div class="entity-row">
-                  <ha-entity-picker
-                    .hass=${this.hass}
-                    .value=${entity}
-                    .includeDomains=${['climate']}
-                    @value-changed=${(e) => this._updateEntity(i, e.detail.value)}
-                    allow-custom-entity
-                  ></ha-entity-picker>
-                  <ha-icon-button
-                    .path=${'M19,6.41L17.59,5L12,10.59L6.41,5L5,6.41L10.59,12L5,17.59L6.41,19L12,13.41L17.59,19L19,17.59L13.41,12L19,6.41Z'}
-                    @click=${() => this._removeEntity(i)}
-                    title="Remove entity"
-                  ></ha-icon-button>
-                </div>
-              `,
-            )}
-            <mwc-button
-              label="Add Entity"
-              icon="mdi:plus"
-              @click=${this._addEntity}
-            ></mwc-button>
-          </div>
+          ${entities.map((entity, i) => html`
+            <div class="entity-row">
+              <ha-selector
+                .hass=${this.hass}
+                .selector=${{ entity: { domain: 'climate' } }}
+                .value=${entity || ''}
+                .label=${'Climate entity'}
+                @value-changed=${(e) => this._updateEntity(i, e.detail.value)}
+              ></ha-selector>
+              <ha-icon-button
+                .path=${'M19,6.41L17.59,5L12,10.59L6.41,5L5,6.41L10.59,12L5,17.59L6.41,19L12,13.41L17.59,19L19,17.59L13.41,12L19,6.41Z'}
+                title="Remove"
+                @click=${() => this._updateEntity(i, '')}
+              ></ha-icon-button>
+            </div>
+          `)}
+          <mwc-button class="add-btn" @click=${this._addEntity}>
+            + Add entity
+          </mwc-button>
         </div>
 
+        <!-- Card Title -->
         <div>
-          <div class="section-title">Title (optional)</div>
+          <div class="section-title">Title</div>
           <ha-textfield
-            label="Card title"
+            label="Card title (optional)"
             .value=${this.config.title ?? ''}
-            @change=${(e) => this._fireChanged({ title: e.target.value })}
+            @change=${(e) => this._fire({ title: e.target.value })}
           ></ha-textfield>
         </div>
 
+        <!-- Temperature Range -->
         <div>
           <div class="section-title">Temperature Range</div>
           <div class="number-row">
@@ -175,43 +161,39 @@ export class ThermostatScheduleCardEditor extends LitElement {
               label="Min (°C)"
               type="number"
               .value=${String(minTemp)}
-              @change=${(e) =>
-                this._fireChanged({ min_temp: parseFloat(e.target.value) })}
+              @change=${(e) => this._fire({ min_temp: parseFloat(e.target.value) })}
             ></ha-textfield>
             <ha-textfield
               label="Max (°C)"
               type="number"
               .value=${String(maxTemp)}
-              @change=${(e) =>
-                this._fireChanged({ max_temp: parseFloat(e.target.value) })}
+              @change=${(e) => this._fire({ max_temp: parseFloat(e.target.value) })}
             ></ha-textfield>
             <ha-textfield
               label="Step (°C)"
               type="number"
               step="0.5"
               .value=${String(tempStep)}
-              @change=${(e) =>
-                this._fireChanged({ temp_step: parseFloat(e.target.value) })}
+              @change=${(e) => this._fire({ temp_step: parseFloat(e.target.value) })}
             ></ha-textfield>
           </div>
         </div>
 
+        <!-- Schedule Storage Entity -->
         <div>
-          <div class="section-title">Schedule Storage Entity (input_text)</div>
-          <ha-entity-picker
+          <div class="section-title">Schedule Storage (input_text)</div>
+          <ha-selector
             .hass=${this.hass}
+            .selector=${{ entity: { domain: 'input_text' } }}
             .value=${scheduleEntity}
-            .includeDomains=${['input_text']}
+            .label=${'input_text helper (optional)'}
             @value-changed=${(e) => this._updateScheduleEntity(e.detail.value)}
-            allow-custom-entity
-          ></ha-entity-picker>
-          <div class="helper-note">
-            Create a Text helper in
-            <strong>Settings → Devices &amp; Services → Helpers</strong>,
-            set max length to <code>10000</code>.
-            When set, schedule changes are saved immediately without requiring
-            dashboard edit mode.
-          </div>
+          ></ha-selector>
+          <p class="helper-note">
+            Optional: speichert den Zeitplan in einem <strong>Text-Helfer</strong>
+            (Einstellungen → Geräte &amp; Dienste → Helfer → Text, max. Länge 10000).
+            Dann werden Änderungen sofort gespeichert — ohne Dashboard-Bearbeitungsmodus.
+          </p>
         </div>
 
       </div>
